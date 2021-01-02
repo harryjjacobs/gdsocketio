@@ -1,0 +1,7 @@
+Import('env')
+
+env_socketio = env.Clone()
+env_socketio.add_source_files(env.modules_sources, "*.cpp") # Add all cpp files to the build
+env_socketio.Append(CXXFLAGS=['-std=c++11'])
+env_socketio.Append(CPPPATH=["lib/socket.io-client-cpp/build/include"])
+env_socketio.Append(LIBPATH=['lib/socket.io-client-cpp/build/lib'])
