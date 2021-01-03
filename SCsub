@@ -1,0 +1,88 @@
+import os
+import re
+from glob import glob
+
+BOOST_INCLUDES_DEFAULT = "/usr/include"
+BOOST_LIBS_DEFAULT = "/usr/lib/x86_64-linux-gnu"
+
+BOOST_MIN_VERSION = "1.61"
+
+Import("env_modules")
+Import("env")
+
+env_gdsocketio = env_modules.Clone()
+
+opts = Variables()
+
+opts.AddVariables(
+    (
+        "BOOST_ROOT",
+        "The root directory of a stock Boost distribution. \
+            Either use this or set BOOST_INCLUDES and BOOST_LIBS",
+        "",
+        False,
+    ),
+    (
+        "BOOST_INCLUDES",
+        "Search path for boost include files. Default is %s" % BOOST_INCLUDES_DEFAULT,
+        BOOST_INCLUDES_DEFAULT,
+        False,
+    ),
+    (
+        "BOOST_LIBS",
+        "Search path for boost library files. Default is %s" % BOOST_LIBS_DEFAULT,
+        BOOST_LIBS_DEFAULT,
+        False,
+    ),
+)
+
+opts.Update(env_gdsocketio)
+
+if env_gdsocketio["BOOST_ROOT"]:
+    env_gdsocketio["BOOST_INCLUDES"] = env_gdsocketio["BOOST_ROOT"]
+    env_gdsocketio["BOOST_LIBS"] = os.path.join(
+        env_gdsocketio["BOOST_ROOT"], "stage", "lib"
+    )
+elif not env_gdsocketio["BOOST_INCLUDES"] or not env_gdsocketio["BOOST_LIBS"]:
+    raise Exception("Neither BOOST_ROOT, nor BOOST_INCLUDES + BOOST_LIBS was set!")
+
+sources = [
+    Glob("*.cpp"),
+    Glob("lib/socket.io-client-cpp/src/*.cpp"),
+    Glob("lib/socket.io-client-cpp/src/internal/*.cpp"),
+]
+
+conf = Configure(env_gdsocketio)
+
+conf.env.Append(CXXFLAGS=["-std=c++11"])
+conf.env.Append(
+    CPPPATH=[
+        "lib/socket.io-client-cpp/lib/websocketpp",
+        "lib/socket.io-client-cpp/lib/rapidjson/include",
+        # conf.env["BOOST_INCLUDES"],
+    ]
+)
+
+print("Using boost include dir %s" % conf.env["BOOST_INCLUDES"])
+print("Using boost lib dir %s" % conf.env["BOOST_LIBS"])
+conf.env.Append(CPPPATH=[conf.env["BOOST_INCLUDES"]])
+conf.env.Append(LIBPATH=[conf.env["BOOST_LIBS"]])
+conf.env.Append(LIBS=["boost_system"])
+conf.env.Append(CPPDEFINES=["BOOST_SYSTEM_NO_DEPRECATED"])
+conf.env.Append(CPPDEFINES=["BOOST_ERROR_CODE_HEADER_ONLY"])
+
+if ARGUMENTS.get("module_gdsocketio_shared", "no") == "yes":
+    # Shared lib compilation
+    conf.env.Append(CCFLAGS=["-fPIC"])
+    conf.env["LIBS"] = []
+    shared_lib = conf.env.SharedLibrary(target="#bin/gdsocketio", source=sources)
+    shared_lib_shim = shared_lib[0].name.rsplit(".", 1)[0]
+    env.Append(LIBS=[shared_lib_shim])
+    env.Append(LIBPATH=["#bin"])
+else:
+    # Static compilation
+    conf.env.add_source_files(
+        env.modules_sources, sources
+    )  # Add all cpp files to the build
+
+conf.Finish()
